@@ -91,3 +91,72 @@ def set_sidebar():
             "language": language,
             "use_embeddings": use_embeddings_config
         }
+
+def initialize_components():
+    """Initialize components that requires API key.
+    Returns: (embedding_model, client, db) or (None, client, None) if embedding fail.
+    Embeddings are optional - app can work without them.
+    """
+    if not all([st.session_state.qdrant_host,
+               st.session_state.qdrant_api_key,
+               st.session_state.openai_api_key]):
+        return None, None, None
+    embedding_model = None
+    db = None
+
+    # Initialize Qdrant Client first
+    try:
+        client = QdrantClient(
+            url=st.session_state.qdrant_host,
+            api_key=st.session_state.qdrant_api_key if st.session_state.qdrant_api_key else None,
+            timeout=30
+        )
+    except Exception as client_error:
+        st.error(f"Failed to Connect Qdrant: {str(client_error)}")
+        return None, None, None
+
+    # Try to run embeddings model (optional - app can work without it)
+    # Check if embeddings are enabled in config
+    use_embeddings_config = st.session_state.get("config", {}).get("use_embeddings", True)
+
+    if not use_embeddings_config:
+        st.info("! Embeddings are disabled in configuration. Running in LLM-only mode.")
+        embedding_model = None
+    else:
+        try:
+            embedding_model = OpenAIEmbeddings(
+                model = "text-embedding-3-small",
+                openai_api_key=st.session_state.openai_api_key
+            )
+            st.success("Emedding Model Initialized Successfully.")
+        except Exception as embed_init_error:
+            error_str = str(embed_init_error)
+            if "504" in error_str or "Deadline" in error_str or "timeout" in error_str.lower():
+                st.warning(" Embedding Model intialization timeout. The app will continue without embeddings (LLM-only-mode).")
+            else:
+                st.warning(f"Could not initialize embedding model: {error_str[:200]}. The app will continue without embeddings. ")
+            embedding_model = None
+            
+
+    # Initialize Qdrant Collection (only if we have mebedding model)
+    if embedding_model:
+        collection_name = "newsletter_db"
+        from qdrant_client.models import Distance, VectorParams
+        embedding_dim = 1536 # OpenAI text-embedding-3-small dimension
+        collection_needs_recreation = False
+
+        # Check existing collection and dimension
+        try:
+            existing_collection = client.get_collection(collection_name)
+            existing_dim = existing_collection.config.params.vectors.size
+            if existing_dim != embedding_dim:
+                st.warning(f" Existing Collectin has {existing_dim} dimensions, but embeddings require {embedding_dim}. Recreating Collection...")
+                try:
+                    client.delete_collection(collection_name)
+                    st.info(f" Old Collection deleted.")
+                    collection_needs_recreation = True
+                except Exception as delete_error:
+                    st.error(f" Failed to delete old collection: {str(delete_error)[:200]}")
+
+                    
+                    
