@@ -15,7 +15,7 @@ import os
 from dataclasses import dataclass
 
 import pandas as pd
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 
 @dataclass
 class Deps:
@@ -42,4 +42,27 @@ async def df_query(ctx: RunContext[Deps], query: str) -> str:
     lowered = query.lower()
     blocked = ["__", "import", "exec", "open(","os.", "sys.", "subprocess", "socket", "pickle"]
     if any(b in lowered for b in blocked):
-        raise ModelRetry("Unsafe query detected. Use pandas operations on 'df' only.") 
+        raise ModelRetry("Unsafe query detected. Use pandas operations on 'df' only.")
+
+    try:
+        result = pd.eval(query, local_dict={"df": ctx.deps.df}, engine='python')
+        return str(result)
+    except Exception as e:
+        raise ModelRetry(f"query: '{query}' is not valid query. Reason: '{e}' ") from e
+    
+def buils_agent() -> Agent[Deps, str]:
+    """Build and configure the agent with tools."""
+    model = os.getenv("PYDANTICAI_MODEL", "openai: gpt-4o-mini")
+    agent = Agent(
+        model = model,
+        system_prompt=SYSTEM_PROMPT,
+        deps_type=Deps,
+        retries=10
+    )
+    # Register the tool
+    agent.tool(df_query)
+    return agent
+
+# Agent will be initialized lazily in streamlit_app.py after env vars are loaded
+agent : Agent[Deps, str] | None = None
+
