@@ -50,7 +50,7 @@ async def df_query(ctx: RunContext[Deps], query: str) -> str:
     except Exception as e:
         raise ModelRetry(f"query: '{query}' is not valid query. Reason: '{e}' ") from e
     
-def buils_agent() -> Agent[Deps, str]:
+def build_agent() -> Agent[Deps, str]:
     """Build and configure the agent with tools."""
     model = os.getenv("PYDANTICAI_MODEL", "openai: gpt-4o-mini")
     agent = Agent(
