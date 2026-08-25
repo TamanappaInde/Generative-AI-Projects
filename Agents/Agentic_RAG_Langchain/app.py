@@ -158,5 +158,40 @@ def initialize_components():
                 except Exception as delete_error:
                     st.error(f" Failed to delete old collection: {str(delete_error)[:200]}")
 
+            else:
+                st.info("! Qdrant Collection already exists with correct dimensions")
+        except Exception:
+            collection_needs_recreation = True
+        if collection_needs_recreation:
+            try:
+                client.create_collection(
+                    collection_name=collection_name,
+                    vectors_config=VectorParams(size=embedding_dim, distance=Distance.COSINE),
+                )
+                st.success("Qdrant Collection Created Successfully")
+            except Exception as create_error:
+                error_msg = str(create_error)
+                if "already exists" in error_msg.lower() or "duplicate" in error_msg.lower():
+                    st.info("! Collection ALreday Exists")
+                else:
+                    st.warning(f" Could not create collection: {error_msg[:200]}. Continuing without storage.")
+
+        # Initialize Vector Store
+        if embedding_model:
+            try:
+                db = QdrantVectorStore(
+                    client=client,
+                    collection_name=collection_name,
+                    embedding=embedding_model,
+                )
+            except Exception as db_init_error:
+                st.warning(f"Could not initialize vector store: {str(db_init_error)[:200]}. Continuing without vector storage.")
+                db = None
+    return embedding_model, client, db
+
+            
+
                     
+
+
                     
