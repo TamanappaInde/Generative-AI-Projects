@@ -1,0 +1,11 @@
+langgraph
+langchain
+langchain-core
+langchain-community
+langchain-groq
+tavily-python
+google-api-python-client
+beautifulsoup4
+python-dotenv
+pydantic
+requests

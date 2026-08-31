@@ -1,0 +1,10 @@
+crewai
+crewai-tools
+langchain-openai
+pandas
+numpy
+python-dotenv
+openpyxl
+pdfplumber
+plotly
+streamlit
