@@ -130,4 +130,70 @@ def task_scheduler(state: AgenState, llm):
     return {"schedule": schedule, "schedule_iteration": schedule_iteration}
 
 
-    
+def task_allocation_node(state: AgenState, llm):
+    prompt = f"""
+    Allocate tasks to team members.
+
+    Tasks: {state["tasks"]}
+    Schedule: {state["schedule"]}
+    Team: {state["team"]}
+    Previous insights: {state["insights"]}
+    Previous Allocations: {state["task_allocations_iteration"]}
+
+    Constraints:
+    - One person can handel only one overlapping task at a time.
+    - Match tasks to skill profiles.
+    - Balance workload across the team.
+    """
+
+    task_allocations = llm.with_structure_ouput(TaskAllocationList).invoke(prompt)
+    task_allocations_iteration = list(state["task_allocations_iteration"])
+    task_allocations_iteration.append(task_allocations)
+    return {
+        "task_allocations": task_allocations,
+        "task_allocations_iteration": task_allocations_iteration,
+    }
+
+def risk_assessment_node(state: AgenState, llm):
+    prompt = f"""
+    Assess risks for this project plan.
+
+    Task Allocations: {state["task_allocations"]}
+    Schedule: {state["schedule"]}
+    Previous Risks: {state["risks_iteration"]}
+ 
+    Output risk score per task from 0 (low) to 10(high), considering:
+    -task complexity
+    -resource constraints
+    -dependency pressure
+    -if assignments are unchanged from prior iteration, keep scores consistent.
+    """
+    risks = llm.with_structured_output(RiskList).invoke(prompt)
+    project_risk_score = sum(risk.score for risk in risks.risks)
+
+    risk_iterations = list(state["risks_iteration"])
+    risk_iterations.append(risks)
+
+    risk_scores_history = list(state["project_risk_score_iterations"])
+    risk_scores_history.append(project_risk_score)
+
+    return {
+        "risks": risks,
+        "project_risk_score": project_risk_score,
+        "iteration_number": state["iteration_number"] + 1,
+        "risk_iteration": risk_iterations,
+        "project_risk_score_iterations": risk_scores_history,
+    }
+
+def insight_generation_code(state: AgenState, llm):
+    prompt = f"""
+    Generate short actionable insights to reduce project risk in the next iteration.
+
+    Task allocations: {state["task_allocations"]}
+    Schedule: {state["schedule"]}
+    Risks: {state["risks"]}
+    """
+
+    insights = llm.invoke(prompt).content
+    return {"insights": insights}
+
