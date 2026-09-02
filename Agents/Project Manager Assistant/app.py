@@ -84,7 +84,7 @@ def load_llm(model_provider: str):
         return ChatOpenAI(model="gpt-4o-mini")
     raise ValueError("model_provider must be either 'Azure' or 'OpenAi'")
 
-def tas_generation_node(state: AgenState, llm):
+def task_generation_node(state: AgenState, llm):
     prompt = f"""
     You are an expert project manager tasked with analyzing the following project description.
     {state["project_description"]}
@@ -110,7 +110,7 @@ def task_dependency_node(state: AgenState, llm):
     return {"dependencies": dependencies}
 
 
-def task_scheduler(state: AgenState, llm):
+def task_scheduler_node(state: AgenState, llm):
     prompt = f"""
     Create an optimized task schedule.
 
@@ -197,3 +197,81 @@ def insight_generation_code(state: AgenState, llm):
     insights = llm.invoke(prompt).content
     return {"insights": insights}
 
+def router(state:AgenState):
+    if state["iteration_number"] >= state["max_iteration"]:
+        return END
+    history = state["project_risk_score_iterations"]
+    if len(history) > 1 and history[-1] < history[0]:
+        return END
+    return "insight_generator"
+
+
+def build_graph(llm):
+    workflow = StateGraph(AgenState)
+
+    workflow.add_node("task_generation", lambda state: task_generation_node(state, llm));
+    workflow.add_node("task_dependencies", lambda state: task_dependency_node(state,llm));
+    workflow.add_node("task_scheduler", lambda state: task_scheduler_node(state, llm));
+    workflow.add_node("task_allocator", lambda state: task_allocation_node(state, llm));
+    workflow.add_node("risk_accessor", lambda state: risk_assessment_node(state, llm));
+    workflow.add_node("insight_generator", lambda state: insight_generation_code(state, llm));
+
+    workflow.set_entry_point("task_generation")
+    workflow.add_edge("task_generation", "task_dependencies")
+    workflow.add_edge("task_dependencies", "task_scheduler")
+    workflow.add_edge("task_scheduler", "task_allocator")
+    workflow.add_edge("task_allocator", "risk_accessor")
+    workflow.add_conditional_edges("risk_accessor", router, ["insights_generator", END])
+    workflow.add_edge("insight_generator", "task_scheduler")
+
+    memory = MemorySaver
+    return workflow.compile(checkpointer=memory)
+
+def get_project_description(file_path: str) -> str:
+    with open(file_path, "r", encoding="utf-8") as file:
+        return file.read();
+ 
+def get_team(file_path: str) -> Team:
+    team_df = pd.read_csv(file_path)
+    team_members = [
+        TeamMember(name=row["Name"], profile=row["Profile Description"])
+        for _, row in team_df.iterrows()
+    ]
+    return Team(team_members=team_members)
+
+def main():
+    parser = argparse.ArgumentParser(description="Project Manager Assistant Agent")
+    parser.add_argument("--project-file", required=True, help="Path to project description .txt file")
+    parser.add_argument("--team-csv", required=True, help="Path to team .csv file with name and profile description  column")
+    parser.add_argument("--model-provider", default="Azure", choices=["Azure", "OpenAI"], help="Model Provider to use")
+    parser.add_argument("--max-iteration", default=3, type=int, help="Maximum reflection iterations")
+    args = parser.parse_args()
+
+    llm = load_llm(args.model_provider)
+    graph_plan = build_graph(llm)
+
+    state_input = {
+        "project_description": get_project_description(args.project_file),
+        "team": get_team(args.team_csv),
+        "insights": "",
+        "iteration_number": 0,
+        "max_iteration": args.max_iteration,
+        "schedule_iteration": [],
+        "task_allocations_iteration": [],
+        "risk_iteration": [],
+        "project_risk_score_iterations": [],
+
+    }
+
+    config = {"configurable": {"thread_id": "project_manager_assistant"}}
+    for event in graph_plan.stream(state_input, config, stream_mode=["updates"]):
+        print(f"Current Node: {next(iter(event[1]))}")
+
+    final_state = graph_plan.get_state(config).values
+    print("\n Final Iteration Count: ", final_state["iteration_number"])
+    print("Project risk score iteration: ", final_state["project_risk_score_iterations"])
+
+if __name__ == "__main__":
+    main()
+
+    
