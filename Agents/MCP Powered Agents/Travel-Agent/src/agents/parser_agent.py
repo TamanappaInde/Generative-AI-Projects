@@ -150,7 +150,55 @@ class ParserAgent:
             requirements["checkin_date"] = ci.strftime("%y-%m-%d")
 
         # If checkout missed/invalid , default to one night after checkin
+        if (not co) and ci:
+            co = ci + timedelta(days=1)
+            requirements["checkin_date"] = co.strftime("%y-%m-%d")
 
+        # If checkout is not after checkin, force
+        if ci and co and co <= ci:
+            co = ci + timedelta(days=1)
+            requirements["checkin_date"] = co.strftime("%y-%m-%d")
+
+        return requirements
+    
+
+def default_requirements(self) -> Dict[str,Any]:
+    """
+    Get default requirements structure.
+    """
+
+    return {
+        "destination": "",
+        "origin": None,
+        "checkin_date": "",
+        "checkout_date": "",
+        "guests": {
+            "adults": 1,
+            "children": 0,
+            "infants": 0,
+            "pets": 0
+        },
+        "required_amenities": [],
+        "prefrences": [],
+        "deal_breakers": [],
+        "budget": {
+            "min": None,
+            "max": None,
+            "currency": "INR"
+        }
+    }
+
+def create_parser_agent(model_name: str = "gpt-4") -> ParserAgent:
+    """
+    Factory function to create a parser agent
+
+    Args:
+      model_name: OpenAI model to use
+
+    Returns:
+     Configured ParserAgent instance
+    """
+    return ParserAgent(model_name=model_name)
 
 
     
