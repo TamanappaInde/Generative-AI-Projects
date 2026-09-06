@@ -1,0 +1,4 @@
+BR-001: As a customer, the user must be able to reset a password quickly.
+BR-002: As a customer, the user must be able to reset their password quickly.
+BR-003: The platform should provide an easy dashboard for reporting.
+BR-004: As a support agent, the system shall show a customer's order history.
