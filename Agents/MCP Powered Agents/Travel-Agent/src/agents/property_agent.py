@@ -153,8 +153,66 @@ class PropertyAgent:
             return []
 
         
-    
+    def extract_from_failed_agent(self, requirements: Dict[str, Any])-> List[Dict[str, Any]]:
+        """
+        Extract properties from agents intermediate steps even if agent failed.
+        """
+        # This would require access to the executors 
+        # For now fall back to direct search
+        return self._direct_search(requirements)
+
+    def extract_properties(
+            self, 
+            agent_result: Dict[str, Any],
+            requirements: Dict[str, Any]
+    )-> List[Dict[str, Any]]:
+        """
+        Extract and format property data from agent result.
+        """
+        properties = []
+
+        try:
+            # Try to extract JOSN from intermediate steps.
+            intermediate_steps = agent_result.get("intermediate_steps", [])
+
+            for action, observation in intermediate_steps:
+                if action.tool == "airbnb_search":
+                    # parse the observation (tool output)
+                    try:
+                        # Handle different response formats
+                        search_resulsts = None
+                        # Try parsing as direct JSON
+                        if isinstance(observation, str):
+                            try:
+                                search_resulsts = json.loads(observation)
+                            except json.JSONDecodeError:
+                                # Try to extract JSON from text content
+                                # some MCP tools wrap responses in content arrays
+                                if '"content"' in observation or '"searchResults"' in observation:
+                                    # Try to find JSON object in the String
+                                    start_idx = observation.find('{')
+                                    if start_idx != -1:
+                                        # Find matching closing brace
+                                        brace_count = 0
+                                        end_idx = start_idx
+                                        for i in range(start_idx, len(observation)):
+                                            if observation[i] == '{':
+                                                brace_count+=1
+                                            elif observation[i] == '}':
+                                                brace_count -= 1
+                                                if brace_count == 0:
+                                                    end_idx = i + 1
+                                                    break
+                                        if end_idx > start_idx:
+                                            json_str = observation[start_idx:end_idx]
+                                            search_resulsts = json.loads(json_str)
+
+                        # Handle structured content format (MCP response format)                  
+
+                    except Exception as e:
+
+        except Exception as e:
 
 
-                    
-                            
+
+        
