@@ -207,12 +207,49 @@ class PropertyAgent:
                                             json_str = observation[start_idx:end_idx]
                                             search_resulsts = json.loads(json_str)
 
-                        # Handle structured content format (MCP response format)                  
+                        # Handle structured content format (MCP response format) 
+                        if not search_resulsts:
+                            # Check if observation is already a dict(from MCP)
+                            if isinstance(observation, dict):
+                                # Handle MCP content array format
+                                if "content" in observation:
+                                    content = observation["content"]
+                                    if isinstance(content, list) and len(content) > 0:
+                                        # Get text from first content item
+                                        first_item = content[0]
+                                        if isinstance(first_item, dict):
+                                            text_content = first_item.get("text", "")
+                                            if text_content:
+                                                try:
+                                                    search_resulsts = json.loads(text_content)
+                                                except json.JSONDecodeError:
+                                                    # Try to extract JSON from text (find first { to last})
+                                                    start_idx = text_content.find('{')
+                                                    if start_idx != -1:
+                                                        # Find the last } to get the complete JSON
+                                                        end_idx = text_content.rfind('}')
+                                                        if end_idx > start_idx:
+                                                            json_str = text_content[start_idx:end_idx+1]
+                                                            try:
+                                                                search_resulsts = json.loads(json_str)
+                                                            except json.JSONDecodeError:
+                                                                pass
+                                # handle structuredcontent format
+                                elif "structuredContent" in observation:
+                                    result_text = observation.get("structuredContent", {}).get("result", "")
+                                    if result_text:
+                                        try:
+                                            search_resulsts = json.loads(result_text)
+                                        except json.JSONDecodeError:
+                                            pass
+                            # If observation is a String try to parse it
+                            elif isinstance(observation, str):
+                                
+
 
                     except Exception as e:
 
         except Exception as e:
+            
 
 
-
-        
