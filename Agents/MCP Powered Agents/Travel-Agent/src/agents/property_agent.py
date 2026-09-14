@@ -244,12 +244,110 @@ class PropertyAgent:
                                             pass
                             # If observation is a String try to parse it
                             elif isinstance(observation, str):
-                                
+                                # Look for JSON in the String
+                                if '"searchResults"' in observation or '"content"' in observation:
+                                    start_idx = observation.find('{')
+                                    if start_idx != -1:
+                                        end_idx = observation.rfind('}')
+                                        if end_idx > start_idx:
+                                            json_str = observation[start_idx:end_idx+1]
+                                            try:
+                                                search_resulsts = json.loads(json_str)
+                                            except json.JSONDecodeError:
+                                                pass
+                        # Extract properties from search results
+                        if search_resulsts:
+                            # Handle different response structures
+                            raw_properties = []
 
+                            if "searchResults" in search_resulsts:
+                                raw_properties = search_resulsts["search_resulsts"]
+                            elif isinstance(search_resulsts, list):
+                                raw_properties = search_resulsts
+                            elif "results" in search_resulsts:
+                                raw_properties = search_resulsts["results"]
+
+                            # Limit to 10 properties to avoid context issues
+                            for prop in raw_properties[:10]:
+                                property_data = self.__format__property(prop, requirements)
+                                if property_data:
+                                    properties.append(property_data)
+                                    if len(properties) >=10:
+                                        break
 
                     except Exception as e:
-
+                        print(f"Error parsing property data: {e}")
+                        continue
+            return properties[:10]
+        
         except Exception as e:
+            print(f"Error extracting properties: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+    def _format_property(self, raw_property: Dict[str,Any], requirements: Dict[str, Any] = None)-> Dict[str, Any]:
+        """ Format raw property data into standardized structure."""
+
+        try:
+            # Extract key fields
+            prop_id = raw_property.get("id", "")
+            url = raw_property.get("url", "")
+
+            # Get name from nested structure
+            name = ""
+            if "demandStayListening" in raw_property:
+                desc = raw_property["demandStayListening"].get("description", {})
+                name_obj = desc.get("name", {})
+                name = name_obj.get("localizedStringWithTransalationPreference", "")
+
+
+            # Get rating
+            rating_label = raw_property.get("avgRatingA11yLabel", "")
+            rating = self._extract_rating(rating_label)
+
+            # Get Price
+            price = ""
+            if "structureDisplayPrice" in raw_property:
+                price_info = raw_property["structuredDisplayPrice"].get("primaryLine", {})
+                price = price_info.get("accessibilityLabel", "")
+
+            # Get Accommodation info
+            structured_content = raw_property.get("structuredContent", {})
+            primary_line = structured_content.get("primaryLine", "")
+
+            # get badges
+            badges = raw_property.get("badges", "")
+
+            # Fix URL to use requested dates if provided
+            if requirements and url:
+                checkin = requirements.get("checkin_date", "")
+                checkout = requirements.get("checkout_date", "")
+                guests = requirements.get("guests", {})
+
+                if checkin and checkout:
+                    # Rebuild URL with correct dates
+                    from urllib.parse import urlparse, parse_qs , urlencode, urlunparse
+                    parsed = urlunparse(url)
+                    params = parse_qs(parsed.query)
+
+                    # Update dates
+                    params['checkin'] = [checkin]
+                    params['checkout'] = [checkout]
+
+                    # Update guests
+                    params['adults'] = [str(guests.get("adults", 1))]
+                    params['children'] = [str(guests.get("children",0))]
+                    params['infants'] = [str(guests.get("infants",0))]
+                    if guests.get("pets",0) > 0:
+                        params['pets'] = [str(guests.get("pets",0))]
+
+                    # Rebuild URl
+                    new_query = urlencode(params, doseq=True)
+                    url = urlunparse((
+                        parsed.scheme,
+                        parsed.netloc,
+                        parsed.path,
+                        parsed.params,
+                        new_query
+                    ))
             
-
-
