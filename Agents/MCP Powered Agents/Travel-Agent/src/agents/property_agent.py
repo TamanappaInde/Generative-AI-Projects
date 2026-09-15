@@ -350,4 +350,43 @@ class PropertyAgent:
                         parsed.params,
                         new_query
                     ))
-            
+            return {
+                "id": prop_id,
+                "name": name,
+                "url": url,
+                "price": price,
+                "rating": rating,
+                "accommodation": primary_line,
+                "badges": badges,
+                "raw_data": raw_property
+            }
+        except Exception as e:
+            print(f"Error formating property: {e}")
+            return None
+    
+    def extract_rating(self, rating_label: str)-> float:
+        """Extract numeric rating from accessibility label.
+        Example: "4.95 out of 5 avarage rating, 62 reviews" -> 4.95
+        """
+        try:
+            if not rating_label:
+                return 0.0
+            parts = rating_label.split()
+            if parts:
+                return float(parts[0])
+            return 0.0
+        except(ValueError, IndexError):
+            return 0.0
+        
+
+def create_property_agent(model_name: str = "gpt-4")-> PropertyAgent:
+    """
+    Factory function to create a property agent.
+
+    Args:
+       model_name: OpenAI model to use
+
+    Returns:
+       Configured PropertyAgent instance
+    """
+    return PropertyAgent(model_name=model_name)
