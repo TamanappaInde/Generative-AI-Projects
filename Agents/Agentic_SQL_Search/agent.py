@@ -1,0 +1,74 @@
+"""
+LangGraph ReAct agent for Agentic SQL Search, with three tools:
+    load_skills: loads SQL syntax rules and schema reference
+    get_schema: insoects the live database schema
+    execute_sql: runs a SELECT query and returns results
+"""
+
+import os
+import sqlite3
+from pathlib import Path
+
+from dotenv import load_dotenv
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import Tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.prebuilt import create_react_agent
+
+load_dotenv()
+
+DB_PATH = Path(__file__).parent / "data" / "ecommerse.db"
+SKILLS_DIR = Path(__file__).parent / "skills"
+
+# Mutable active path - updated at runtime when user uploads their own database
+_active_db_path: Path = DB_PATH
+
+def set_db_path(path) -> None:
+    """Switch the database the agent tools query against."""
+    global _active_db_path
+    _active_db_path = Path(path)
+
+llm = ChatGoogleGenerativeAI(
+    model = "gemma-4-26b-a4b-it",
+    google_api_key=os.getenv("GEMINI_API_KEY")
+    temperature=0,
+)
+
+#______Tools_______________________________________________________________________
+
+@tool
+def load_skill(skill_name: str)-> str:
+    """
+    Load a skill document with syntax rules and query patterns.
+    Always call this first with skill_name= 'sql' before writing any query.
+    """
+
+    path = SKILLS_DIR / f"{skill_name}.md"
+    if not path.exists():
+        available = [p.stem for p in SKILLS_DIR.glob("*.md")]
+        return f"Skill '{skill_name}' not found. Available: {', '.join(available)}"
+    return path.read_text()
+
+
+@tool
+def get_schema() -> str:
+    """
+    Return the full database schema - table names, column names, and steps.
+
+    call this to understand what tables and columns are available before writing SQL.
+    """
+
+    conn = sqlite3.connect(_active_db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+    tables = [row[0] for row in cursor.fetchall()]
+
+    schema_parts = []
+    for table in tables:
+        cursor.execute(f"PRAGMA table_info({table})")
+        cols = cursor.fetchall()
+        col_defs = "\n".join([f"   {c[1]:30s} {c[2]}" for c in cols])
+        schema_parts.append(f"TABLE: {table}\n{col_defs}")
+
+    conn.close()
+    return "\n\n".join(schema_parts)
