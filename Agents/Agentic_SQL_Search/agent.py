@@ -72,3 +72,102 @@ def get_schema() -> str:
 
     conn.close()
     return "\n\n".join(schema_parts)
+
+@tool
+def execute_sql(query: str)-> str:
+    """
+    Execute a SQL SELECT query against the e-commerse SQLite database.
+    Returns results as a formatted table, Only SELECT queries are allowed.
+    """
+
+    query = query.strip()
+    if not query.upper().startswith("SELECT"):
+        return "Error: Only SELECT queries are allowed."
+
+    try:
+        conn = sqlite3.connect(_active_db_path)
+        cursor = conn.cursor()
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
+        conn.close()
+
+        if not rows:
+            return "Query executed successfully but returned no results."
+
+        col_widths = [
+            max(len(col), max((len(str(row[i])) for row in rows), default=0))
+            for i, col in enumerate(columns)
+        ]
+
+        header = " | ".join(col.ljust(w) for col, w in zip(columns, col_widths))
+        seperator = "-+-".join("-"* w  in col_widths)
+        data_rows = [
+            " | ".join(str(row[i]).ljust(col_widths[i]) for i in range(len(columns)))
+            for row in rows[:100]
+        ]
+        result = "\n".join([header, seperator] + data_rows)
+        if len(rows) > 100:
+            result += f"\n... ({len(rows)} total rows, showing first 100)"
+        return result
+
+    except sqlite3.Error as e:
+        return f"SQL Error: {e}"
+
+# _____________________Agent_____________________________________
+
+tools = [load_skill, get_schema, execute_sql]
+
+SYSTEM_PROMPT = """
+You are a data analyst agent with access to e-commerse sqlite database\
+containing customers, products, orders, and order items.
+
+Your job is to answer the users question by quering the database.
+
+Always follow this exact workflow:
+1. Call load_skill with skill_name='sql' to review SQL Syntax rules and query patterns 
+2. Call get_schema to confirm available tables and column names
+3. Write and run the SQL query with execute_sql
+4. Return a clear, consice summary of the results
+
+Never guess column names - always check the schema first.
+
+Only Write SELECT queries. Be precise with JOINs and aggregations.
+"""
+
+graph = create_react_agent(llm, tools=tools, prompt=SYSTEM_PROMPT)
+
+
+def run_agent(question: str)-> dict:
+    """
+    Run the agent on question and return:
+       {
+       "answer": str,
+       "steps": [{"tool": str, "input": dict, "output": str}]
+       } 
+    """
+    result = graph.invoke({"messages": [("human", question)]})
+    messages = result["messages"]
+
+    # ----Extract final text answer(last non-tool AI message)-----
+    answer = ""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage) and not msg.tool_calls:
+            content = msg.content
+            if isinstance(content, str):
+                answer = content.strip()
+            elif isinstance(content, list):
+                parts = [
+                    p.get("text", "") if isinstance(p, dict) else str(p)
+                    for p in content
+                ]
+                answer = " ".join(parts).strip()
+
+            if answer:
+                break
+        # Extract tool call steps
+        steps = []
+        tool_ouputs[msg.tool_call_id] = (
+            
+        )
+
